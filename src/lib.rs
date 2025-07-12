@@ -3,7 +3,10 @@ use serde::Serialize;
 #[derive(Serialize)]
 pub struct Macho {
     header: Header,
+    load_commands: Vec<LoadCommand>,
 }
+
+// Header
 
 pub const MAGIC_HEADER: u32 = 0xfeedfacf;
 
@@ -99,10 +102,116 @@ pub enum HeaderFlag {
                                     the filesystem. */
 }
 
+// Load Commands
+
+const LC_REQ_DYLD: u32 = 0x80000000;
+const LC_DYLD_INFO_ONLY: u32 = LC_REQ_DYLD | 0x22;
+const LC_MAIN: u32 = LC_REQ_DYLD | 0x28;
+
+#[derive(Serialize)]
+pub struct SymtabCommand {
+    cmd_size: usize,
+}
+
+#[derive(Serialize)]
+pub struct DsymtabCommand {
+    cmd_size: usize,
+}
+
+#[derive(Serialize)]
+pub struct LoadDylibCommand {
+    cmd_size: usize,
+}
+
+#[derive(Serialize)]
+pub struct LoadDylinkerCommand {
+    cmd_size: usize,
+}
+
+#[derive(Serialize)]
+pub struct Segment64Command {
+    cmd_size: usize,
+}
+
+#[derive(Serialize)]
+pub struct UuidCommand {
+    cmd_size: usize,
+}
+
+#[derive(Serialize)]
+pub struct CodeSignatureCommand {
+    cmd_size: usize,
+}
+
+#[derive(Serialize)]
+pub struct BuildVersionCommand {
+    cmd_size: usize,
+}
+
+#[derive(Serialize)]
+pub struct FunctionStartsCommand {
+    cmd_size: usize,
+}
+
+#[derive(Serialize)]
+pub struct DataInCodeCommand {
+    cmd_size: usize,
+}
+
+#[derive(Serialize)]
+pub struct SourceVersionCommand {
+    cmd_size: usize,
+}
+
+#[derive(Serialize)]
+pub struct DyldInfoOnlyCommand {
+    cmd_size: usize,
+}
+
+#[derive(Serialize)]
+pub struct MainCommand {
+    cmd_size: usize,
+}
+
+#[derive(Serialize)]
+pub enum LoadCommand {
+    // 0x2
+    Symtab(SymtabCommand),
+    // 0xb
+    Dsymtab(DsymtabCommand),
+    // 0xc
+    LoadDylib(LoadDylibCommand),
+    // 0xe
+    LoadDylinker(LoadDylinkerCommand),
+    // 0x19
+    Segment64(Segment64Command),
+    // 0x1b
+    Uuid(UuidCommand),
+    // 0x1d
+    CodeSignature(CodeSignatureCommand),
+    // 0x32
+    BuildVersion(BuildVersionCommand),
+    // 0x26
+    FunctionStarts(FunctionStartsCommand),
+    // 0x29
+    DataInCode(DataInCodeCommand),
+    // 0x2A
+    SourceVersion(SourceVersionCommand),
+    // (0x22|LC_REQ_DYLD)
+    DyldInfoOnly(DyldInfoOnlyCommand),
+    // (0x28|LC_REQ_DYLD)
+    Main(MainCommand),
+    Unknow(u32),
+}
+
 pub fn parse(data: &[u8]) -> Result<Macho, String> {
     let mut reader = DataReader::new(data);
     let header = parse_header(&mut reader)?;
-    Ok(Macho { header })
+    let load_commands = parse_load_commands(&mut reader, header.no_cmds)?;
+    Ok(Macho {
+        header,
+        load_commands,
+    })
 }
 
 fn parse_header(reader: &mut DataReader) -> Result<Header, String> {
@@ -198,6 +307,129 @@ fn h_flag(v: u32, flag: HeaderFlag, result: &mut Vec<HeaderFlag>) {
         result.push(flag)
     }
 }
+
+fn parse_load_commands(
+    reader: &mut DataReader,
+    no_cmds: usize,
+) -> Result<Vec<LoadCommand>, String> {
+    let mut commands = Vec::with_capacity(no_cmds);
+    for _ in 0..no_cmds {
+        let cmd = reader.read_u32();
+        let cmd_size = reader.read_u32() as usize;
+        let command = match cmd {
+            0x2 => parse_cmd_symtab(reader, cmd_size),
+            0xb => parse_cmd_dsymtab(reader, cmd_size),
+            0xc => parse_cmd_load_dylib(reader, cmd_size),
+            0xe => parse_cmd_load_dylinker(reader, cmd_size),
+            0x19 => parse_cmd_segment_64(reader, cmd_size),
+            0x1b => parse_cmd_uuid(reader, cmd_size),
+            0x1d => parse_cmd_code_signature(reader, cmd_size),
+            0x32 => parse_cmd_build_version(reader, cmd_size),
+            0x26 => parse_cmd_function_starts(reader, cmd_size),
+            0x2a => parse_cmd_source_version(reader, cmd_size),
+            0x29 => parse_cmd_data_in_code(reader, cmd_size),
+            LC_DYLD_INFO_ONLY => parse_cmd_dyld_info_only(reader, cmd_size),
+            LC_MAIN => parse_cmd_main(reader, cmd_size),
+            _ => {
+                reader.skip(cmd_size - 8);
+                Ok(LoadCommand::Unknow(cmd))
+            }
+        }?;
+        commands.push(command);
+    }
+    Ok(commands)
+}
+
+fn parse_cmd_symtab(reader: &mut DataReader, cmd_size: usize) -> Result<LoadCommand, String> {
+    reader.skip(cmd_size - 8);
+    Ok(LoadCommand::Symtab(SymtabCommand { cmd_size }))
+}
+
+fn parse_cmd_dsymtab(reader: &mut DataReader, cmd_size: usize) -> Result<LoadCommand, String> {
+    reader.skip(cmd_size - 8);
+    Ok(LoadCommand::Dsymtab(DsymtabCommand { cmd_size }))
+}
+
+fn parse_cmd_load_dylib(reader: &mut DataReader, cmd_size: usize) -> Result<LoadCommand, String> {
+    reader.skip(cmd_size - 8);
+    Ok(LoadCommand::LoadDylib(LoadDylibCommand { cmd_size }))
+}
+
+fn parse_cmd_load_dylinker(
+    reader: &mut DataReader,
+    cmd_size: usize,
+) -> Result<LoadCommand, String> {
+    reader.skip(cmd_size - 8);
+    Ok(LoadCommand::LoadDylinker(LoadDylinkerCommand { cmd_size }))
+}
+
+fn parse_cmd_segment_64(reader: &mut DataReader, cmd_size: usize) -> Result<LoadCommand, String> {
+    reader.skip(cmd_size - 8);
+    Ok(LoadCommand::Segment64(Segment64Command { cmd_size }))
+}
+
+fn parse_cmd_uuid(reader: &mut DataReader, cmd_size: usize) -> Result<LoadCommand, String> {
+    reader.skip(cmd_size - 8);
+    Ok(LoadCommand::Uuid(UuidCommand { cmd_size }))
+}
+
+fn parse_cmd_code_signature(
+    reader: &mut DataReader,
+    cmd_size: usize,
+) -> Result<LoadCommand, String> {
+    reader.skip(cmd_size - 8);
+    Ok(LoadCommand::CodeSignature(CodeSignatureCommand {
+        cmd_size,
+    }))
+}
+
+fn parse_cmd_build_version(
+    reader: &mut DataReader,
+    cmd_size: usize,
+) -> Result<LoadCommand, String> {
+    reader.skip(cmd_size - 8);
+    Ok(LoadCommand::BuildVersion(BuildVersionCommand { cmd_size }))
+}
+
+fn parse_cmd_function_starts(
+    reader: &mut DataReader,
+    cmd_size: usize,
+) -> Result<LoadCommand, String> {
+    reader.skip(cmd_size - 8);
+    Ok(LoadCommand::FunctionStarts(FunctionStartsCommand {
+        cmd_size,
+    }))
+}
+
+fn parse_cmd_source_version(
+    reader: &mut DataReader,
+    cmd_size: usize,
+) -> Result<LoadCommand, String> {
+    reader.skip(cmd_size - 8);
+    Ok(LoadCommand::SourceVersion(SourceVersionCommand {
+        cmd_size,
+    }))
+}
+
+fn parse_cmd_data_in_code(reader: &mut DataReader, cmd_size: usize) -> Result<LoadCommand, String> {
+    reader.skip(cmd_size - 8);
+    Ok(LoadCommand::DataInCode(DataInCodeCommand { cmd_size }))
+}
+
+fn parse_cmd_dyld_info_only(
+    reader: &mut DataReader,
+    cmd_size: usize,
+) -> Result<LoadCommand, String> {
+    reader.skip(cmd_size - 8);
+    Ok(LoadCommand::DyldInfoOnly(DyldInfoOnlyCommand { cmd_size }))
+}
+
+fn parse_cmd_main(reader: &mut DataReader, cmd_size: usize) -> Result<LoadCommand, String> {
+    reader.skip(cmd_size - 8);
+    Ok(LoadCommand::Main(MainCommand { cmd_size }))
+}
+
+// helper
 
 pub struct DataReader<'a> {
     data: &'a [u8],
