@@ -121,6 +121,10 @@ pub struct DsymtabCommand {
 #[derive(Serialize)]
 pub struct LoadDylibCommand {
     cmd_size: usize,
+    name: String,
+    timestamp: u32,
+    current_version: u32,
+    compatibility_version: u32,
 }
 
 #[derive(Serialize)]
@@ -351,8 +355,18 @@ fn parse_cmd_dsymtab(reader: &mut DataReader, cmd_size: usize) -> Result<LoadCom
 }
 
 fn parse_cmd_load_dylib(reader: &mut DataReader, cmd_size: usize) -> Result<LoadCommand, String> {
-    reader.skip(cmd_size - 8);
-    Ok(LoadCommand::LoadDylib(LoadDylibCommand { cmd_size }))
+    reader.skip(4); //name offset, derived from cmd_size
+    let timestamp = reader.read_u32();
+    let current_version = reader.read_u32();
+    let compatibility_version = reader.read_u32();
+    let name = clean_string(&reader.read_utf8_string(cmd_size - (6 * 4)));
+    Ok(LoadCommand::LoadDylib(LoadDylibCommand {
+        cmd_size,
+        name,
+        timestamp,
+        current_version,
+        compatibility_version,
+    }))
 }
 
 fn parse_cmd_load_dylinker(
@@ -521,4 +535,8 @@ impl DataReader<'_> {
     pub fn offset(&self) -> usize {
         return self.offset;
     }
+}
+
+fn clean_string(str: &str) -> String {
+    str.replace('\0', "")
 }
