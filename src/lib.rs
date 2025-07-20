@@ -135,6 +135,29 @@ pub struct LoadDylinkerCommand {
 #[derive(Serialize)]
 pub struct Segment64Command {
     cmd_size: usize,
+    name: String,
+    vm_addr: u64,
+    vm_size: u64,
+    file_off: u64,
+    file_size: u64,
+    max_prot: i32,
+    init_prot: i32,
+    n_sects: u32,
+    flags: u32, // TODO convert to Segment Flag Vec!
+    sections: Vec<Section64>,
+}
+
+#[derive(Serialize)]
+pub struct Section64 {
+    name: String,
+    seg_name: String,
+    address: u64,
+    size: u64,
+    offset: u32,
+    align: u32,
+    relocation_offset: u32,
+    n_relocations: u32,
+    flags: u32, // TODO convert to Section Flag Vec!
 }
 
 #[derive(Serialize)]
@@ -378,8 +401,64 @@ fn parse_cmd_load_dylinker(
 }
 
 fn parse_cmd_segment_64(reader: &mut DataReader, cmd_size: usize) -> Result<LoadCommand, String> {
-    reader.skip(cmd_size - 8);
-    Ok(LoadCommand::Segment64(Segment64Command { cmd_size }))
+    let start = reader.offset();
+
+    let name = clean_string(&reader.read_utf8_string(16));
+    let vm_addr = reader.read_u64();
+    let vm_size = reader.read_u64();
+    let file_off = reader.read_u64();
+    let file_size = reader.read_u64();
+    let max_prot = reader.read_i32();
+    let init_prot = reader.read_i32();
+    let n_sects = reader.read_u32();
+    let flags = reader.read_u32();
+
+    let mut sections = Vec::with_capacity(n_sects as usize);
+    for _ in 0..n_sects {
+        let sec = parse_section_64(reader)?;
+        sections.push(sec);
+    }
+
+    //assure reader is at the end of the load command
+    reader.skip(cmd_size - (reader.offset() - start) - 8);
+
+    Ok(LoadCommand::Segment64(Segment64Command {
+        cmd_size,
+        name,
+        vm_addr,
+        vm_size,
+        file_off,
+        file_size,
+        max_prot,
+        init_prot,
+        n_sects,
+        flags,
+        sections,
+    }))
+}
+
+fn parse_section_64(reader: &mut DataReader) -> Result<Section64, String> {
+    let name = clean_string(&reader.read_utf8_string(16));
+    let seg_name = clean_string(&reader.read_utf8_string(16));
+    let address = reader.read_u64();
+    let size = reader.read_u64();
+    let offset = reader.read_u32();
+    let align = reader.read_u32();
+    let relocation_offset = reader.read_u32();
+    let n_relocations = reader.read_u32();
+    let flags = reader.read_u32();
+    reader.skip(12); //reserved1, reserved2, reserved3 u32
+    Ok(Section64 {
+        name,
+        seg_name,
+        address,
+        size,
+        offset,
+        align,
+        relocation_offset,
+        n_relocations,
+        flags,
+    })
 }
 
 fn parse_cmd_uuid(reader: &mut DataReader, cmd_size: usize) -> Result<LoadCommand, String> {
@@ -466,6 +545,16 @@ impl DataReader<'_> {
             String::from_utf8_lossy(&self.data[self.offset..(self.offset + size)]).to_string();
         self.offset += size;
         str
+    }
+
+    pub fn read_u64(&mut self) -> u64 {
+        let u = u64::from_le_bytes(
+            self.data[self.offset..(self.offset + 8)]
+                .try_into()
+                .unwrap(),
+        );
+        self.offset += 8;
+        u
     }
 
     pub fn read_u32(&mut self) -> u32 {
