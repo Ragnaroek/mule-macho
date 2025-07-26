@@ -32,14 +32,29 @@ pub enum CPUType {
 #[repr(i32)]
 #[derive(Serialize)]
 pub enum CPUSubType {
-    ARM_ALL = 0,
+    ARM(CPUARMSubType),
+    X86(CPUX86SubType),
+}
+
+#[repr(i32)]
+#[derive(Serialize)]
+pub enum CPUARMSubType {
+    All = 0,
+}
+
+#[repr(i32)]
+#[derive(Serialize)]
+pub enum CPUX86SubType {
+    All = 0,
+    All64 = 3,
 }
 
 #[repr(u32)]
 #[derive(Serialize)]
 pub enum FileType {
-    MH_OBJECT = 0x1,   /* relocatable object file */
-    MH_EXECUTED = 0x2, /* demand paged executable file */
+    MhObject = 0x1,   /* relocatable object file */
+    MhExectued = 0x2, /* demand paged executable file */
+    MhDSYM = 0xa,     /* companion file with only debug sections */
 }
 
 #[repr(u32)]
@@ -270,26 +285,30 @@ fn parse_cpu_type(v: i32) -> Result<CPUType, String> {
     } else if v == CPUType::ARM64 as i32 {
         Ok(CPUType::ARM64)
     } else {
-        Err(format!("unsupported cpu_type: {:x}", v))
+        Err(format!("unsupported cpu_type: 0x{:x}", v))
     }
 }
 
 fn parse_cpu_sub_type(cpu_type: CPUType, v: i32) -> Result<CPUSubType, String> {
-    if cpu_type == CPUType::ARM64 {
-        match v {
-            0 => Ok(CPUSubType::ARM_ALL),
-            _ => Err(format!("unsupported ARM64 cpu_sub_type: {:x}", v)),
-        }
-    } else {
-        Err(format!("unsupported cpu_sub_type: {:x}", v))
+    match cpu_type {
+        CPUType::ARM64 => match v {
+            0 => Ok(CPUSubType::ARM(CPUARMSubType::All)),
+            _ => Err(format!("unsupported ARM64 cpu_sub_type: 0x{:x}", v)),
+        },
+        CPUType::X86_64 => match v {
+            0 => Ok(CPUSubType::X86(CPUX86SubType::All)),
+            3 => Ok(CPUSubType::X86(CPUX86SubType::All64)),
+            _ => Err(format!("unsupported X86_64 cpu_sub_type: 0x{:x}", v)),
+        },
     }
 }
 
 fn parse_file_type(v: u32) -> Result<FileType, String> {
     match v {
-        0x1 => Ok(FileType::MH_OBJECT),
-        0x2 => Ok(FileType::MH_EXECUTED),
-        _ => Err(format!("unsupported file_type: {:x}", v)),
+        0x1 => Ok(FileType::MhObject),
+        0x2 => Ok(FileType::MhExectued),
+        0xa => Ok(FileType::MhDSYM),
+        _ => Err(format!("unsupported file_type: 0x{:x}", v)),
     }
 }
 

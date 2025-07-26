@@ -1,2 +1,2 @@
-run-mmacho:
-    @cargo run --bin mmacho --features mmacho -- ../_testdata/iw --format json
+run-mmacho BINARY:
+    @cargo run --bin mmacho --features mmacho -- ../_testdata/{{BINARY}} --format json
